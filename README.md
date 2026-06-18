@@ -1,49 +1,193 @@
-Right now, you have built a complete, working automated document assembly pipeline. You are no longer just asking an AI to write text; you are using Python to orchestrate physical desktop publishing software on your Mac.
+# ResuMaker: Automated Agentic Resume Compiler
 
-Here is exactly how the data flows through your directory right now when you hit run:
+An automated, layout-preserving resume optimization pipeline that tailors a LaTeX master resume to a specific job description. The system utilizes Gemini 2.5 Flash to perform targeted, contextual text mutations while ensuring structural integrity. It then compiles the output directly into a production-ready PDF via a local TeX Live publishing toolchain, all guarded by an automated agentic self-correction retry loop and exposed through a FastAPI web service gateway.
 
-[ Your Python App ] 
-       │
-       ├── 1. Reads your master data profile (data/resume.tex)
-       ├── 2. Grabs the Target Job Description text
-       └── 3. Ships both to Gemini via API
-               │
-               ▼
-   [ Optimized LaTeX Code ]
-               │
-       (Writes to Disk)
-               ▼
-  data/tailored_resume.tex
-               │
-       (Shells out to Mac System)
-               ▼
-       [ pdfTeX Compiler ] ──(Looks at local BasicTeX engine)
-               │
-               ▼
-  data/tailored_resume.pdf
-  
-You have successfully written the core python logic (app/engine.py), resolved your Mac's internal package dependencies (tlmgr), verified the compilation loop, and generated a real, formatted PDF output completely headlessly.
+---
 
-📂 Decoding the Ghost Files (.aux, .log, .out)
-When you run pdflatex, it compiles code in a single, top-to-bottom pass to stay incredibly fast. Because it reads your file line-by-line, it can't "see into the future" to know how many total pages your document has, or exactly where sections will land when it's building a Table of Contents or internal links.
+## Architecture and Project Flow
 
-To solve this, it spits out a few temporary ledger files to keep notes for itself.
+The system operates as a self-correcting processing pipeline that connects an HTTP web interface to an upstream Large Language Model (LLM) reasoning engine and a downstream system-level layout compiler.
 
-1. tailored_resume.log (The Black Box Diary)
-This is a comprehensive, step-by-step journal of the compilation process. It records:
+```
+              +-----------------------+
+              |   HTTP POST Request   |
+              |  (Job Description)    |
+              +-----------+-----------+
+                          |
+                          v
+              +-----------------------+
+              |    FastAPI Gateway    | <--- Reads data/resume.tex
+              |     (app/main.py)     |
+              +-----------+-----------+
+                          |
+                          v
+   +--------------> app/engine.py         <-- (Loop initialization)
+   |          (tailor_resume_pipeline)
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |   In-Place Mutation   | ----> Calls Gemini 2.5 API
+   |          +-----------+-----------+
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |   Generated LaTeX     |
+   |          | (tailored_resume.tex) |
+   |          +-----------+-----------+
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |    System Compiler    |
+   |          |  (pdflatex execution) |
+   |          +-----------+-----------+
+   |                      |
+   |            [Compilation Gate]
+   |             /               \
+   |       (If Failed)       (If Successful)
+   |           /                   \
+(Extract Log Error)                 v
+extract_latex_errors()     +-----------------------+
+   |                       |   Binary Stream Out   |
+   +-----------------------| (tailored_resume.pdf) |
+                           +-----------------------+
+```
 
-Which fonts were loaded from your Mac (tcrm1000, ecbx1200).
+### Execution Lifecycle
 
-Which structural style rules were parsed (fullpage.sty, enumitem.sty).
+1. **Intake**: The user submits a job description string via an HTTP POST request to the API gateway.
+2. **Ingestion**: The application reads the master LaTeX resume template (`data/resume.tex`) into memory as raw text.
+3. **Mutation Loop (Max 3 Retries)**:
 
-Warning metrics, like the layout engine warning you that your footer space (\footskip) was set to 0.0pt, which might cut off page numbers.
+- The system constructs a structural prompt containing the target job description and the raw LaTeX text layout, passing it to Gemini.
+- The model analyzes the requirements and updates text segments inside the formatting brackets.
+- The text is written to disk as a temporary build file (`data/tailored_resume.tex`).
 
-2. tailored_resume.aux (The Auxiliary Memory Layer)
-This file holds metadata strings used to map out layout variables across compilation passes. If you open it, you'll see lines like:
+4. **Compilation Verification**: The system spawns an external OS subprocess to execute the local `pdflatex` binary.
 
-Code snippet
-\@writefile{toc}{\contentsline {section}{\numberline {1}Summary}{1}{section.1}}
-This tells LaTeX: "Hey, during the next pass, remember that the 'Summary' header ended up on physical page 1." If you add internal cross-references, LaTeX reads this file on its second pass to fill in the numbers perfectly.
+- **Success Path**: If the compiler exit code returns `0`, the loop breaks immediately, and the binary PDF is streamed back to the client browser via a `FileResponse` socket.
+- **Self-Healing Path**: If the compiler crashes, the system invokes `extract_latex_errors()` to parse the corresponding `.log` file. It isolates the explicit error rows, appends them to a new correction context prompt, and triggers a remediation pass back to the LLM.
 
-3. tailored_resume.out (The PDF Interactive Blueprint)
-This specific file is created because your template imports the hyperref package. It tracks your hidden bookmarks—the digital map that allows PDF viewers (like Adobe Reader or Preview) to display a clickable sidebar table of contents pane next to your document.
+---
+
+## Directory Component Glossary
+
+```
+resumaker/
+├── .env                  # Local secret configuration environment keys
+├── .gitignore            # Version control tracking exclusions
+├── README.md             # System documentation and operational blueprint
+├── app/
+│   ├── init.py       # Namespace package identifier
+│   ├── engine.py         # Core agentic self-correction loop and system execution logic
+│   └── main.py           # FastAPI web framework routing gateway
+└── data/
+    ├── resume.tex        # Master LaTeX profile input template
+    ├── tailored_resume.tex   # Mutated LaTeX output file generated by the LLM
+    └── tailored_resume.pdf   # Finished binary document output file
+```
+
+### File-by-File Breakdown
+
+#### `app/main.py`
+
+This file serves as the web server and routing interface. It initializes the FastAPI framework and maps out the application networks.
+
+- **Functionality**: It exposes a public POST endpoint `/api/v1/tailor` that captures form data payloads. It coordinates the lifecycle by calling the orchestration function `tailor_resume_pipeline` inside `engine.py`. If the self-correcting loop returns successfully, it surfaces the physical binary PDF file back over the network interface with standard `application/pdf` MIME type headers.
+
+#### `app/engine.py`
+
+This file serves as the core processing engine. It contains all direct operating system integration components, LLM client configurations, log parsing utilities, and self-healing state mechanisms.
+
+- **`compile_pdf(tex_path, output_dir)`**: Integrates Python directly with the underlying operating system host. It uses Python's native `subprocess` module to spawn an external process running the `pdflatex` system binary. It passes specific CLI arguments, such as `-interaction=batchmode`, to ensure that if a syntax anomaly occurs, the compiler logs the fault headlessly to a diagnostic file instead of stalling the execution runtime.
+- **`extract_latex_errors(log_path)`**: An optimization utility that reads the raw `.log` output text if a compilation failure occurs. It scans for lines starting with an exclamation mark (`! `) to extract the explicit LaTeX compilation errors and their immediate context blocks, stripping out verbose system memory data before shipping it back to the LLM.
+- **`tailor_resume_pipeline(resume_path, job_description, data_dir)`**: Manages the orchestration of the agentic self-correction retry state machine. It handles iteration tracking, updates user prompt configurations with error data if compilation failures materialize, and guarantees that the system has up to three distinct attempts to self-correct any structural anomalies before outputting an execution error.
+
+#### `data/resume.tex`
+
+Your absolute profile master copy. It contains custom macros and environments (e.g., `\\resumeSubheading`, `\\resumeItem`) that format the resume. It provides the baseline experience data before any optimizations occur.
+
+#### Temporary Compiler Artifacts (`.aux`, `.log`, `.out`)
+
+When the `pdflatex` binary executes, it outputs several transient helper ledgers inside the `data/` directory:
+
+- **`.log`**: A diagnostic journal that contains information regarding memory space utilization, font packages mapping, and raw compilation error lines.
+- **`.aux`**: An auxiliary memory file used by LaTeX to record positions of structural sections across compilation runs, ensuring page numbers map accurately.
+- **`.out`**: A document map file generated by the `hyperref` package that structures interactive bookmark indices for modern PDF viewer sidebars.
+
+---
+
+## Local Environment Requirements
+
+To execute this project locally, your system must have two distinct environments configured: a Python runtime environment and a native LaTeX compilation backend distribution.
+
+### 1. Operating System Prerequisites
+
+- **macOS**: Requires Homebrew installed for package provisioning.
+- **Python**: Version 3.9 or higher (Python 3.11/3.12 recommended).
+
+### 2. LaTeX Distribution Installation
+
+Because Python calls the local compiler via system shell hooks, a headless LaTeX environment must be available in the system PATH execution variable.
+
+On macOS, execute the following commands using Homebrew:
+
+```bash
+# Install the lightweight BasicTeX publishing distribution
+brew install --cask basictex
+
+# Restart your terminal application to register the new system binary PATH mappings
+```
+
+By default, the small footprint distribution does not include advanced typesetting style sheets used by this professional resume layout. Install the layout dependencies globally via the TeX Live package manager (tlmgr):
+
+```bash
+# Update the package manager engine itself
+sudo tlmgr update --self
+
+# Install the structural layout packages required by the resume template
+sudo tlmgr install preprint titlesec enumitem
+```
+
+### 3. Application Setup and Activation
+
+Clone the project repository to your workspace, navigate to the root directory, and initialize the isolated Python environment:
+
+```bash
+# Create the local python virtual environment folder
+python3 -m venv venv
+
+# Activate the isolated virtual environment state
+source venv/bin/activate
+```
+
+Install the explicit framework dependencies defined within the application setup:
+
+```bash
+pip install fastapi uvicorn python-multipart google-genai python-dotenv
+```
+
+Create a configuration file named .env in the root directory to store your API credentials:
+
+```
+GEMINI_API_KEY=your_actual_google_ai_studio_api_key_here
+```
+
+4. Running the Application Gateway
+
+Execute the ASGI server using uvicorn from your root project folder:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Navigate to http://127.0.0.1:8000/docs in your web browser to access the interactive Swagger UI sandbox interface.
+
+Project Limitations
+
+Understanding the explicit boundaries of the current technical design is critical before applying modifications:
+
+- **State Isolation**: The text modification pipeline is stateless. It overwrites tailored_resume.tex and tailored_resume.pdf during every subsequent execution cycle. It does not natively store transaction histories or versioning records for individual job entries out of the box.
+
+- **Template Coupling**: The underlying system instruction prompt is highly optimized for the structural custom commands embedded inside your custom layout style (\\resumeSubheading, \\\resumeItem). Swapping to an entirely different LaTeX template structure without adjusting the system instructions can lead to text extraction errors.
+
+- **Local Binary Dependency**: The application requires an active, heavy background installation of a local system package (pdflatex). It cannot operate as a purely portable or platform-independent cloud script without being containerized into an isolated runtime environment (e.g., Docker).
