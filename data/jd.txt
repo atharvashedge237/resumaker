@@ -1,0 +1,1 @@
+We are looking for a Senior DevOps / Cloud Engineer with extensive experience in GitLab CI/CD workflows, Terraform infrastructure as code, and running production workloads inside Azure AKS. Experience tracking application performance metrics via Prometheus and Grafana dashboards is highly valued.
