@@ -4,19 +4,17 @@ import sys
 from fastapi import FastAPI, HTTPException, Form
 from fastapi.responses import FileResponse
 
-# Ensure Python knows where to find our app modules relative to the runtime execution path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.engine import tailor_resume, compile_pdf
+# Fixed to import the accurate pipeline name from the engine
+from app.engine import tailor_resume_pipeline, compile_pdf
 
-# Initialize our Web Framework
 app = FastAPI(
     title="ResuMaker API Gateway",
     description="Automated DevOps Pipeline for LaTeX Resume Tailoring via Gemini 2.5",
     version="1.0.0"
 )
 
-# Establish strict system path anchors
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MASTER_RESUME_PATH = os.path.join(DATA_DIR, "resume.tex")
@@ -28,7 +26,6 @@ async def api_tailor_resume(job_description: str = Form(...)):
     if not os.path.exists(MASTER_RESUME_PATH):
         raise HTTPException(status_code=404, detail="Master profile missing.")
         
-    # Trigger self-correcting automation loop
     success = tailor_resume_pipeline(MASTER_RESUME_PATH, job_description, DATA_DIR)
     
     if not success or not os.path.exists(output_pdf):
@@ -41,5 +38,4 @@ async def api_tailor_resume(job_description: str = Form(...)):
 
 @app.get("/health")
 async def service_health_check():
-    """Service availability node ping."""
     return {"status": "healthy", "engine": "active"}
