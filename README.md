@@ -1,58 +1,71 @@
 # ResuMaker: Automated Agentic Resume Compiler
 
-An automated, layout-preserving resume optimization pipeline that tailors a LaTeX master resume to a specific job description. The system utilizes Gemini 2.5 Flash to perform targeted, contextual text mutations while ensuring structural integrity. It then compiles the output directly into a production-ready PDF via a local TeX Live publishing toolchain, all exposed through a FastAPI web service gateway.
+An automated, layout-preserving resume optimization pipeline that tailors a LaTeX master resume to a specific job description. The system utilizes Gemini 2.5 Flash to perform targeted, contextual text mutations while ensuring structural integrity. It then compiles the output directly into a production-ready PDF via a local TeX Live publishing toolchain, all guarded by an automated agentic self-correction retry loop and exposed through a FastAPI web service gateway.
 
 ---
 
 ## Architecture and Project Flow
 
-The system operates as a single-pass processing pipeline that connects an HTTP web interface to an upstream Large Language Model (LLM) reasoning engine and a downstream system-level layout compiler.
+The system operates as a self-correcting processing pipeline that connects an HTTP web interface to an upstream Large Language Model (LLM) reasoning engine and a downstream system-level layout compiler.
 
 ```
-                   +-----------------------+
-                   |   HTTP POST Request   |
-                   |  (Job Description)    |
-                   +-----------+-----------+
-                               |
-                               v
-                   +-----------------------+
-                   |    FastAPI Gateway    | <--- Reads data/resume.tex
-                   |     (app/main.py)     |
-                   +-----------+-----------+
-                               |
-                               v
-                   +-----------------------+
-                   |   In-Place Mutation   |
-                   |    (app/engine.py)    | ----> Calls Gemini 2.5 API
-                   +-----------+-----------+
-                               |
-                               v
-                   +-----------------------+
-                   |   Generated LaTeX     |
-                   | (tailored_resume.tex) |
-                   +-----------+-----------+
-                               |
-                               v
-                   +-----------------------+
-                   |    System Compiler    |
-                   |      (pdflatex)       |
-                   +-----------+-----------+
-                               |
-                               v
-                   +-----------------------+
-                   |   Binary Stream Out   |
-                   | (tailored_resume.pdf) |
-                   +-----------------------+
+              +-----------------------+
+              |   HTTP POST Request   |
+              |  (Job Description)    |
+              +-----------+-----------+
+                          |
+                          v
+              +-----------------------+
+              |    FastAPI Gateway    | <--- Reads data/resume.tex
+              |     (app/main.py)     |
+              +-----------+-----------+
+                          |
+                          v
+   +--------------> app/engine.py         <-- (Loop initialization)
+   |          (tailor_resume_pipeline)
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |   In-Place Mutation   | ----> Calls Gemini 2.5 API
+   |          +-----------+-----------+
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |   Generated LaTeX     |
+   |          | (tailored_resume.tex) |
+   |          +-----------+-----------+
+   |                      |
+   |                      v
+   |          +-----------------------+
+   |          |    System Compiler    |
+   |          |  (pdflatex execution) |
+   |          +-----------+-----------+
+   |                      |
+   |            [Compilation Gate]
+   |             /               \
+   |       (If Failed)       (If Successful)
+   |           /                   \
+(Extract Log Error)                 v
+extract_latex_errors()     +-----------------------+
+   |                       |   Binary Stream Out   |
+   +-----------------------| (tailored_resume.pdf) |
+                           +-----------------------+
 ```
 
 ### Execution Lifecycle
 
 1. **Intake**: The user submits a job description string via an HTTP POST request to the API gateway.
 2. **Ingestion**: The application reads the master LaTeX resume template (`data/resume.tex`) into memory as raw text.
-3. **Mutation**: The system constructs a structural instruction prompt containing the job description and raw LaTeX code, passing it to Gemini. The model analyzes the requirements and updates text segments inside the LaTeX brackets without modifying any formatting structural markup.
-4. **I/O Persistence**: The mutated LaTeX string is validated and written to disk as a temporary build file (`data/tailored_resume.tex`).
-5. **Compilation**: The system opens an isolated OS subprocess to execute the local `pdflatex` binary, translating markup into a compiled PDF.
-6. **Egress**: The generated binary PDF is streamed across the HTTP socket connection as an attachment, allowing immediate browser download.
+3. **Mutation Loop (Max 3 Retries)**:
+
+- The system constructs a structural prompt containing the target job description and the raw LaTeX text layout, passing it to Gemini.
+- The model analyzes the requirements and updates text segments inside the formatting brackets.
+- The text is written to disk as a temporary build file (`data/tailored_resume.tex`).
+
+4. **Compilation Verification**: The system spawns an external OS subprocess to execute the local `pdflatex` binary.
+
+- **Success Path**: If the compiler exit code returns `0`, the loop breaks immediately, and the binary PDF is streamed back to the client browser via a `FileResponse` socket.
+- **Self-Healing Path**: If the compiler crashes, the system invokes `extract_latex_errors()` to parse the corresponding `.log` file. It isolates the explicit error rows, appends them to a new correction context prompt, and triggers a remediation pass back to the LLM.
 
 ---
 
@@ -62,9 +75,10 @@ The system operates as a single-pass processing pipeline that connects an HTTP w
 resumaker/
 ├── .env                  # Local secret configuration environment keys
 ├── .gitignore            # Version control tracking exclusions
+├── README.md             # System documentation and operational blueprint
 ├── app/
 │   ├── init.py       # Namespace package identifier
-│   ├── engine.py         # Core text mutation and local tool execution logic
+│   ├── engine.py         # Core agentic self-correction loop and system execution logic
 │   └── main.py           # FastAPI web framework routing gateway
 └── data/
     ├── resume.tex        # Master LaTeX profile input template
@@ -76,20 +90,21 @@ resumaker/
 
 #### `app/main.py`
 
-This file serves as the web server and primary interface. It initializes the FastAPI framework and defines the network routes.
+This file serves as the web server and routing interface. It initializes the FastAPI framework and maps out the application networks.
 
-- **Functionality**: It exposes a public POST endpoint `/api/v1/tailor` that captures form data payloads. It coordinates the lifecycle by calling functions inside `engine.py`. If the operations execute successfully, it returns a `FileResponse` object that streams the physical binary PDF file back over the network interface with a standard `application/pdf` MIME type headers.
+- **Functionality**: It exposes a public POST endpoint `/api/v1/tailor` that captures form data payloads. It coordinates the lifecycle by calling the orchestration function `tailor_resume_pipeline` inside `engine.py`. If the self-correcting loop returns successfully, it surfaces the physical binary PDF file back over the network interface with standard `application/pdf` MIME type headers.
 
 #### `app/engine.py`
 
-This file serves as the processing core. It contains all direct system integration code, LLM client connection configurations, and compilation logic.
+This file serves as the core processing engine. It contains all direct operating system integration components, LLM client configurations, log parsing utilities, and self-healing state mechanisms.
 
-- **`tailor_resume(resume_path, job_description)`**: Reads the candidate's master resume text from disk, initializes the upstream Google GenAI API client, and applies strict systemic constraints. It sets a low generation temperature (0.2) to maintain strict data extraction boundaries and prevent layout variations.
-- **`compile_pdf(tex_path, output_dir)`**: Integrates Python directly with the underlying operating system host. It utilizes Python's native `subprocess` module to spawn an external operating system process running the `pdflatex` system binary. It passes specific CLI arguments, such as `-interaction=batchmode`, to ensure that if a syntax anomaly occurs, the compiler logs the fault headlessly to a diagnostic file instead of stalling the execution runtime.
+- **`compile_pdf(tex_path, output_dir)`**: Integrates Python directly with the underlying operating system host. It uses Python's native `subprocess` module to spawn an external process running the `pdflatex` system binary. It passes specific CLI arguments, such as `-interaction=batchmode`, to ensure that if a syntax anomaly occurs, the compiler logs the fault headlessly to a diagnostic file instead of stalling the execution runtime.
+- **`extract_latex_errors(log_path)`**: An optimization utility that reads the raw `.log` output text if a compilation failure occurs. It scans for lines starting with an exclamation mark (`! `) to extract the explicit LaTeX compilation errors and their immediate context blocks, stripping out verbose system memory data before shipping it back to the LLM.
+- **`tailor_resume_pipeline(resume_path, job_description, data_dir)`**: Manages the orchestration of the agentic self-correction retry state machine. It handles iteration tracking, updates user prompt configurations with error data if compilation failures materialize, and guarantees that the system has up to three distinct attempts to self-correct any structural anomalies before outputting an execution error.
 
 #### `data/resume.tex`
 
-Your absolute profile master copy. It contains custom macros and environments (e.g., `\\resumeSubheading`, `\\resumeItem`) that format the resume. It provides the base baseline experience data before any optimizations occur.
+Your absolute profile master copy. It contains custom macros and environments (e.g., `\\resumeSubheading`, `\\resumeItem`) that format the resume. It provides the baseline experience data before any optimizations occur.
 
 #### Temporary Compiler Artifacts (`.aux`, `.log`, `.out`)
 
@@ -118,7 +133,8 @@ On macOS, execute the following commands using Homebrew:
 
 ```bash
 # Install the lightweight BasicTeX publishing distribution
-brew install --cask basictex 
+brew install --cask basictex
+
 # Restart your terminal application to register the new system binary PATH mappings
 ```
 
@@ -173,7 +189,5 @@ Understanding the explicit boundaries of the current technical design is critica
 - **State Isolation**: The text modification pipeline is stateless. It overwrites tailored_resume.tex and tailored_resume.pdf during every subsequent execution cycle. It does not natively store transaction histories or versioning records for individual job entries out of the box.
 
 - **Template Coupling**: The underlying system instruction prompt is highly optimized for the structural custom commands embedded inside your custom layout style (\\resumeSubheading, \\\resumeItem). Swapping to an entirely different LaTeX template structure without adjusting the system instructions can lead to text extraction errors.
-
-- **Escaping Constraints**: LLM token generation can occasionally struggle to correctly parse and escape internal punctuation marks required by the compiler. While characters like % are actively monitored and handled by system constraints, exotic inline math sequences or raw symbols can lead to unexpected compilation failures.
 
 - **Local Binary Dependency**: The application requires an active, heavy background installation of a local system package (pdflatex). It cannot operate as a purely portable or platform-independent cloud script without being containerized into an isolated runtime environment (e.g., Docker).
