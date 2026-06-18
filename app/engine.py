@@ -66,6 +66,7 @@ def tailor_resume_pipeline(resume_path: str, job_description: str, data_dir: str
     2. Modify only descriptive text inside brackets to emphasize key skills requested in the JD.
     3. Ensure special characters like % or & are correctly escaped (e.g., use \\% or \\&).
     4. Output ONLY raw text. Do not enclose code in Markdown blocks like ```latex.
+    5. STYLISTIC RULE: Avoid using bold lettering (the \\textbf command) for the tailored keywords unless absolutely necessary. Keep the text flowing naturally without adding extra formatting weights.
     """
     
     user_prompt = f"Target Job Description:\n{job_description}\n\nOriginal LaTeX Resume:\n{raw_tex_resume}"
