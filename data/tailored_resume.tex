@@ -1,0 +1,157 @@
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{tabularx}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.6in}
+\addtolength{\textwidth}{1.2in}
+\addtolength{\topmargin}{-.7in}
+\addtolength{\textheight}{1.6in}
+
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+\titleformat{\section}{
+  \vspace{-6pt}\bfseries\large
+}{}{0em}{}[\titlerule \vspace{-6pt}]
+
+%---------- CUSTOM COMMANDS ----------
+\newcommand{\resumeItem}[1]{
+  \item #1
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+  \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+    \textbf{#1} & #2 \\
+    \textit{#3} & \textit{#4} \\
+  \end{tabular*}\vspace{-6pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+  \item
+  \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+    #1 & #2 \\
+  \end{tabular*}\vspace{-6pt}
+}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-8pt}}
+
+%-------------------------------------------
+\begin{document}
+
+\begin{center}
+    {\Huge \textbf{Atharva Shedge}} \\
+    Pune, Maharashtra, India \\
+    +91-956-196-7720 \quad | \quad
+    \href{mailto:atharvashedge237@gmail.com}{atharvashedge237@gmail.com} \quad | \quad
+    \href{https://linkedin.com/in/atharva-shedge}{linkedin.com/in/atharva-shedge}
+\end{center}
+
+%-----------SUMMARY-----------
+\section{Summary}
+\small{
+DevOps Engineer with 2.5 years of **extensive experience** building and operating **production cloud infrastructure**, **GitLab CI/CD workflows**, and deployment automation in enterprise environments. Proficient in **Azure AKS**, **Terraform infrastructure as code**, and **GitLab CI/CD**, with proven impact reducing build times by 30\% and improving deployment speed by 40\%. Worked on AI platform infrastructure including Azure ML and Azure OpenAI Service in a regulated banking environment.
+}
+
+%-----------EDUCATION-----------
+\section{Education}
+\resumeSubHeadingListStart
+
+\resumeSubheading
+{College of Engineering, Pune (COEP)}{2021 -- 2024}
+{B.Tech Electronics and Telecommunication; CGPA: 8.39}{Pune}
+
+\resumeSubheading
+{Institute of Petrochemical Engineering}{2018 -- 2021}
+{Diploma; 99.3\%}{Raigad}
+
+\resumeSubHeadingListEnd
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+\resumeSubHeadingListStart
+
+\resumeSubheading
+{UBS}{Aug 2024 -- Present}
+{Software Engineer (DevOps)}{Pune}
+\resumeItemListStart
+\resumeItem{Provisioned and managed Azure ML and Azure OpenAI Service
+  infrastructure for internal AI initiatives, handling model endpoint
+  deployment and access control via Entra ID}
+\resumeItem{Migrated **production Kubernetes workloads** from on-prem clusters to **Azure AKS**
+  using **Terraform infrastructure as code**, reducing cluster provisioning time by 40\%}
+\resumeItem{Designed and maintained reusable Helm charts for 4 application
+  deployments across dev, staging, and production environments}
+\resumeItem{Reduced CI pipeline build time by 30\% by introducing Docker layer
+  caching and parallelising test stages across **GitLab CI/CD workflows**}
+\resumeItem{Reduced deployment execution time by 40\% by streamlining release workflows across 10--30 **GitLab CI/CD pipelines**}
+\resumeItem{Managed CI/CD pipelines in a regulated banking environment,
+  ensuring compliance with audit and change management requirements}
+\resumeItemListEnd
+
+\vspace{4pt}
+\begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+  \textit{DevOps Intern} & \textit{Jan 2024 -- Jul 2024} \\
+\end{tabular*}
+\vspace{-16pt}
+\resumeItemListStart
+\resumeItem{Refactored CI/CD pipeline codebase from 7000+ lines to $\sim$1000 lines,
+  improving maintainability and reducing onboarding time for new engineers}
+\resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+%-----------PROJECTS-----------
+\section{Projects}
+\resumeSubHeadingListStart
+
+\resumeProjectHeading
+{\textbf{MLOps Pipeline} $|$ \textit{Terraform infrastructure as code, Azure AKS, Helm, GitHub Actions, Prometheus, Grafana}}{2026}
+\resumeItemListStart
+\resumeItem{Built an end-to-end MLOps pipeline deploying an LLM-powered Document Q\&A
+  API on **Azure AKS**, auto-scaling 2--10 replicas via HPA across fully
+  **Terraform-provisioned infrastructure as code** (VNet, ACR, Key Vault, AKS) for **production workloads**}
+\resumeItem{Implemented multi-stage CI/CD with GitHub Actions -- automated testing, Docker
+  image build and push to ACR, Helm deployment to AKS, and automatic rollback on failure}
+\resumeItem{Configured **Prometheus** alert rules and **Grafana dashboards** tracking **application performance metrics** like API latency,
+  error rates, LLM inference time, and pod health across production namespace}
+\resumeItem{Secured infrastructure with Azure Key Vault CSI driver for secret injection,
+  RBAC service accounts, non-root containers, and Trivy image scanning in CI pipeline}
+\resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+%-----------SKILLS-----------
+\section{Skills}
+\resumeItemListStart
+\resumeItem{\textbf{Proficient:} Kubernetes, Docker, Helm, **Terraform infrastructure as code**, Ansible, Puppet,
+  **GitLab CI/CD workflows**, PowerShell, Bash, Linux, Windows Server,
+  Azure (**Azure AKS**, VNet, Blob Storage, Key Vault, ACR, Azure Monitor, Log Analytics, Entra ID),
+  Azure OpenAI Service, Azure AI Foundry, Hashicorp Vault, **Prometheus**, **Grafana**}
+\resumeItem{\textbf{Familiar:} GitHub Actions, Azure ML, GPU VM provisioning}
+\resumeItemListEnd
+
+%-----------CERTIFICATIONS-----------
+\section{Certifications}
+\resumeItemListStart
+\resumeItem{Azure Administrator Associate (AZ-104)}
+\resumeItem{Azure Fundamentals (AZ-900)}
+\resumeItem{Azure AI Fundamentals (AI-900)}
+\resumeItemListEnd
+
+\end{document}
